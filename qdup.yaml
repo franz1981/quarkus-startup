@@ -27,5 +27,6 @@ roles:
     run-scripts:
       - run-pmap
     cleanup-scripts:
+      - export-metrics
       - cleanup-profiling 
    
