@@ -11,6 +11,7 @@ roles:
       - start-quarkus
     cleanup-scripts:
       - cleanup-sut
+      - cleanup-quarkus
   driver:
     hosts:
       - driver
