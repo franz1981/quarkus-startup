@@ -1,0 +1,61 @@
+scripts:
+  # measure RSS
+  run-pmap:
+    # WAIT_FOR: which signal should it wait before starting 
+    # WAIT_END: which signal should it wait before stopping
+    # MAIN_SERVICE_PID_STATE: the pid of the JVM process to profile
+    # MAIN_SERVICE_ID: service to monitor QUARKUS
+    # FILE_ID: a name to identify the generated file if multiple runs
+    - js: ${{PMAP_ENABLED}}
+      then:
+        - wait-for: ${{WAIT_FOR:BENCHMARK_STARTED}}
+        - queue-download: /tmp/${{MAIN_SERVICE_ID}}_rss_${{FILE_ID:all}}.log
+        - repeat-until: ${{WAIT_END:BENCHMARK_TERMINATED}}
+          then:
+            - sh: echo -n "$(date +"%I:%M:%S %p")  " >> /tmp/${{MAIN_SERVICE_ID}}_rss_${{FILE_ID:all}}.log
+            - sh:
+                # NOTE: with docker this requires starting the containers with the same host user, this is now sets by default with
+                # --user "$(id -u):$(id -g)"
+                command: pmap -x ${{${{MAIN_SERVICE_PID_STATE}}}} ${{PMAP_PARAMS:}} 2>/dev/null | grep total >> /tmp/${{MAIN_SERVICE_ID}}_rss_${{FILE_ID:all}}.log
+                ignore-exit-code: true
+            - sleep: 1s
+
+  capture-first-response:
+    - wait-for: BENCHMARK_TERMINATED
+    # capture this if and only if LOOP_SERVICE_FIRST_RESP_TIMESTAMP is set
+    - read-state: ${{RUN.LOOP_SERVICE_FIRST_RESP_TIMESTAMP}}
+      then:
+        - log: Capturing first response time
+        - sh: ${{CONTAINER_RUNTIME}} inspect ${{ ${{MAIN_SERVICE_POD_ID_STATE}} }} | grep StartedAt | awk '{print $2}'| awk '{gsub("\"", " "); print $1}'| awk '{gsub("T"," "); print}'|awk '{print substr($0, 1, length($0)-6)}'
+          then:
+            - set-state: LOOP_SERVICE_START_TIME
+        - sh: echo $(($(date "+%s%N" -d "${{LOOP_SERVICE_START_TIME}} $(date "+%z")")/1000000))
+          then:
+            - set-state: LOOP_SERVICE_START_TIMESTAMP
+        - sh: echo $((${{LOOP_SERVICE_FIRST_RESP_TIMESTAMP}} - ${{LOOP_SERVICE_START_TIMESTAMP}}))
+          then:
+            - set-state: FIRST_RESPONSE_TIME
+  
+  # parse the metrics from the generated profiling files and set them to
+  # qDup states so that they can easily be exported
+  # RSS at the end
+  # RSS (min, max, mean)
+  export-metrics:
+    # rss
+    - js: ${{PMAP_ENABLED}}
+      then:
+        - script: parse-rss-results
+          with:
+            RSS_FILE: /tmp/${{MAIN_SERVICE_ID}}_rss_${{FILE_ID:all}}.log
+            MAX_STATE: ${{FILE_ID:all}}_${{MAIN_SERVICE_ID}}_RSS_MAX
+            AVG_STATE: ${{FILE_ID:all}}_${{MAIN_SERVICE_ID}}_RSS_AVG
+
+  cleanup-profiling:
+    - sh:
+        command: rm -rf /tmp/*_rss*.log
+        ignore-exit-code: true
+states:
+  SUDOER:
+
+  PMAP_ENABLED: true
+  PMAP_PARAMS: 

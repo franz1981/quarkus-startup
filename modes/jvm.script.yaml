@@ -1,0 +1,27 @@
+scripts:
+  clone-sut:
+    - sh: if [ -d ${{QUARKUS_BUILD_FOLDER}} ]; then rm -rf ${{QUARKUS_BUILD_FOLDER}}; fi
+    - sh: git clone --depth 1 ${{QUARKUS_BUILD_REPO}} ${{QUARKUS_BUILD_FOLDER}}
+    - sh: cd ${{QUARKUS_BUILD_FOLDER}} && git fetch --depth 1 origin ${{QUARKUS_BUILD_COMMIT}} && git checkout ${{QUARKUS_BUILD_COMMIT}}
+  prepare-images:
+    - log: building the JVM mode Application Image
+    - script: clone-sut
+    - sh: cd ${{QUARKUS_BUILD_FOLDER}}
+    - queue-download: /tmp/quarkus.build.log
+    - script: sdk-select-java
+      with:
+        JAVA_VERSION: ${{JAVA_VERSION}}
+    - sh: >
+        ./mvnw clean package -DskipTests
+        -Dquarkus.http.host=0.0.0.0 | tee /tmp/quarkus.build.log
+    # cleanup any previous image to get a fresh new one
+    - sh: ${{CONTAINER_RUNTIME}} build -f src/main/docker/Dockerfile.jvm -t ${{QUARKUS_IMAGE}} .
+    - signal: QUARKUS_IMAGES_BUILD_COMPLETED
+  cleanup-sut:
+    - sh: rm -rf ${{QUARKUS_BUILD_FOLDER}}
+states:
+  QUARKUS_BUILD_REPO: https://github.com/franz1981/quarkus-reactive-beer.git
+  QUARKUS_BUILD_COMMIT: master
+  QUARKUS_BUILD_FOLDER: /tmp/quarkus-application
+  # change me
+  CONTAINER_RUNTIME_PARAMS:

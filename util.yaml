@@ -1,0 +1,113 @@
+globals:
+  javascript: |
+    // returns the `host` network if running locally otherwise empty string
+    function getNetwork(server){
+      // return server == 'LOCAL' ? '--network host' : ''
+      return '--network host'
+    }
+    // retrieves the hostname from the specified server
+    function getHostname(server){
+      return server == 'LOCAL' ? 'localhost' : server.split('@').pop()
+    }
+
+scripts:
+  install-sdkman: #https://sdkman.io/install
+    - sh:
+        command: sdk help
+        prompt:
+          "Would you like to upgrade now? (Y/n): ": "Y"
+    - regex: ".*command not found"
+      then:
+        - sh: curl -s "https://get.sdkman.io" | bash
+          then:
+            - regex: "Enjoy"
+              else:
+                - abort: failed to install SDKMAN
+        - sh: source "$HOME/.sdkman/bin/sdkman-init.sh"
+      # else:
+      # - sh: sdk selfupdate force
+      #   then:
+      #   - regex: "Successfully upgraded SDKMAN"
+      #     else:
+      #     - abort: failed to upgrade SDKMAN
+    - sh:
+        command: sdk version
+        prompt:
+          "Would you like to upgrade now? (Y/n): ": "Y"
+        # SDKMAN 5.9.1+575
+      then:
+        - regex: "SDKMAN (?<RUN.sdk_version>[\\d\\.\\+]+)"
+  
+  sdk-select-java:
+    - script: install-sdkman # requires util.yaml
+    - sh:
+        command: sdk install java ${{JAVA_VERSION:21.0.5-tem}}
+        prompt:
+          "set as default? (Y/n): ": "Y"
+    - sh:
+        command: sdk use java ${{JAVA_VERSION:21.0.5-tem}}
+
+  sdk-select-jbang:
+    - script: install-sdkman # requires util.yaml
+    - sh:
+        command: sdk install jbang ${{JBANG_VERSION:0.121.0}}
+        prompt:
+          "set as default? (Y/n): ": "Y"
+    - sh:
+        command: sdk use jbang ${{JBANG_VERSION:0.121.0}}
+
+  extract-service-pid:
+    # CONTAINER_ID: the id of the running container
+    # STATE_PID: the state where the pid should be saved to
+    - sh: ${{CONTAINER_RUNTIME}} inspect --format='{{.State.Pid}}' ${{CONTAINER_ID}}
+    - regex: (^[1-9][0-9]*$)
+      then:
+        - set-state: ${{STATE_PID}}
+    # if we have wrappers as entrypoint we should find the java process
+    - js: ${{IS_ENTRYPOINT_WRAPPER}}
+      then:
+        - set-signal: stop 1
+        - repeat-until: stop
+          then:
+            - sh: ps --ppid ${{${{STATE_PID}}}} -o pid= | awk '{print $1}'
+              then:
+                - for-each: pid
+                  then:
+                    - regex: (^[1-9][0-9]*$)
+                      then:
+                        - set-state: ${{STATE_PID}}
+                        - sh: ps --pid ${{${{STATE_PID}}}} -o cmd=
+                        - regex: java
+                          then:
+                            - signal: stop
+    # inspect the pid
+    - sh: ps -p ${{${{STATE_PID}}}}
+
+  parse-rss-results:
+    # RSS_FILE: rss file to parse
+    # MAX_STATE: where to save the max result
+    # AVG_STATE: where to save the avg result
+    - sh: echo $(cat ${{RSS_FILE}} | awk '{print $6}')
+      silent: true
+      then:
+        - js: |
+            (input, state) => {
+              let rssResults = input.split(" ").map(v => parseInt(v)).filter(v => !Number.isNaN(v))
+              if (rssResults.length > 0) {
+                // max cpu usage
+                state.${{MAX_STATE}} = Math.max(...rssResults)
+                // avg cpu usage
+                state.${{AVG_STATE}} = rssResults.reduce((all, v) => all + v, 0) / rssResults.length
+              } else {
+                state.${{MAX_STATE}} = "NaN"
+                state.${{AVG_STATE}} = "NaN"
+              }
+            }
+
+states:
+  JBANG_VERSION: "0.121.0"
+  JAVA_VERSION: "21.0.5-tem"
+
+  # set to true if the container entrypoints are wrappers
+  # i.e., the main process is not the entrypoint itself
+  IS_ENTRYPOINT_WRAPPER: false

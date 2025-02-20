@@ -1,0 +1,30 @@
+hosts:
+  sut: ${{SUT_SERVER}}
+  driver: ${{LOAD_DRIVER_SERVER}}
+
+roles:
+  sut:
+    hosts:
+      - sut
+    setup-scripts:
+      - prepare-images
+      - start-quarkus
+    cleanup-scripts:
+      - cleanup-sut
+  driver:
+    hosts:
+      - driver
+    setup-scripts:
+      - setup-driver
+    run-scripts:
+      - run-benchmark
+    cleanup-scripts:
+      - cleanup-driver
+  profiler:
+    hosts:
+      - sut
+    run-scripts:
+      - run-pmap
+    cleanup-scripts:
+      - cleanup-profiling 
+   
