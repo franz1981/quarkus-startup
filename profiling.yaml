@@ -56,6 +56,5 @@ scripts:
         ignore-exit-code: true
 states:
   SUDOER:
-
   PMAP_ENABLED: true
   PMAP_PARAMS: 

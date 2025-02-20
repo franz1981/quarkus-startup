@@ -63,23 +63,6 @@ scripts:
     - regex: (^[1-9][0-9]*$)
       then:
         - set-state: ${{STATE_PID}}
-    # if we have wrappers as entrypoint we should find the java process
-    - js: ${{IS_ENTRYPOINT_WRAPPER}}
-      then:
-        - set-signal: stop 1
-        - repeat-until: stop
-          then:
-            - sh: ps --ppid ${{${{STATE_PID}}}} -o pid= | awk '{print $1}'
-              then:
-                - for-each: pid
-                  then:
-                    - regex: (^[1-9][0-9]*$)
-                      then:
-                        - set-state: ${{STATE_PID}}
-                        - sh: ps --pid ${{${{STATE_PID}}}} -o cmd=
-                        - regex: java
-                          then:
-                            - signal: stop
     # inspect the pid
     - sh: ps -p ${{${{STATE_PID}}}}
 
@@ -107,7 +90,3 @@ scripts:
 states:
   JBANG_VERSION: "0.121.0"
   JAVA_VERSION: "21.0.5-tem"
-
-  # set to true if the container entrypoints are wrappers
-  # i.e., the main process is not the entrypoint itself
-  IS_ENTRYPOINT_WRAPPER: false

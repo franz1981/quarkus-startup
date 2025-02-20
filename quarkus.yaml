@@ -1,54 +1,48 @@
 scripts:
   
   start-quarkus:
-    - js: ${{QUARKUS_ENABLED}}
-      then:
-        - log: starting service...
-        # TODO: the port value is discarded while running this in local network mode
-        - sh: >
-            ${{CONTAINER_RUNTIME}} run -d
-            --rm
-            --name quarkus
-            ${{ CONTAINER_RUNTIME_PARAMS }}
-            --memory ${{QUARKUS_MEMORY}}
-            --cpuset-cpus ${{QUARKUS_CPU}}
-            ${{= ${{MAP_USER_GROUP}} ? '--user "$(id -u):$(id -g)" ' : '' }}
-            -p ${{QUARKUS_PORT}}:8083
-            -e JAVA_OPTS_APPEND="${{JAVA_OPTS_APPEND}}"
-            ${{= getNetwork( '${{SUT_SERVER}}' ) }}
-            ${{QUARKUS_IMAGE}}
-            ${{= ${{IS_NATIVE}} ? "./${{QUARKUS_NATIVE_ENTRYPOINT}} ${{JAVA_OPTS_APPEND}}" : '' }}
-          then:
-            - regex: (?<HOST.QUARKUS_POD_ID>[a-f0-9]{64}$)
-              else:
-                - abort: failed to capture pod id for Quarkus rest service
-            - script: extract-service-pid
-              with:
-                CONTAINER_ID: ${{HOST.QUARKUS_POD_ID}}
-                STATE_PID: HOST.QUARKUS_PID
-            - signal: QUARKUS_PID_READY
-        - sh: ${{CONTAINER_RUNTIME}} logs -f ${{HOST.QUARKUS_POD_ID}}
-          silent: true # prevent logs to be printed in the terminal
-          watch:
-            - regex: started in.*Listening on
-              then:
-                - ctrlC
-          timer:
-            1m: # max wait time
-              - abort: QUARKUS has not been ready in 1 min
-        - signal: QUARKUS_REST_READY
+      - log: starting service...
+      # TODO: the port value is discarded while running this in local network mode
+      - sh: >
+          ${{CONTAINER_RUNTIME}} run -d
+          --rm
+          --name quarkus
+          ${{ CONTAINER_RUNTIME_PARAMS }}
+          --memory ${{QUARKUS_MEMORY}}
+          --cpuset-cpus ${{QUARKUS_CPU}}
+          ${{= ${{MAP_USER_GROUP}} ? '--user "$(id -u):$(id -g)" ' : '' }}
+          -p ${{QUARKUS_PORT}}:8083
+          -e JAVA_OPTS_APPEND="${{JAVA_OPTS_APPEND}}"
+          ${{= getNetwork( '${{SUT_SERVER}}' ) }}
+          ${{QUARKUS_IMAGE}}
+          ${{= ${{IS_NATIVE}} ? "./${{QUARKUS_NATIVE_ENTRYPOINT}} ${{JAVA_OPTS_APPEND}}" : '' }}
+        then:
+          - regex: (?<HOST.QUARKUS_POD_ID>[a-f0-9]{64}$)
+            else:
+              - abort: failed to capture pod id for Quarkus rest service
+          - script: extract-service-pid
+            with:
+              CONTAINER_ID: ${{HOST.QUARKUS_POD_ID}}
+              STATE_PID: HOST.QUARKUS_PID
+          - signal: QUARKUS_PID_READY
+      - sh: ${{CONTAINER_RUNTIME}} logs -f ${{HOST.QUARKUS_POD_ID}}
+        silent: true # prevent logs to be printed in the terminal
+        watch:
+          - regex: started in.*Listening on
+            then:
+              - ctrlC
+        timer:
+          1m: # max wait time
+            - abort: QUARKUS has not been ready in 1 min
+      - signal: QUARKUS_REST_READY
 
   cleanup-quarkus:
-    - js: ${{QUARKUS_ENABLED}}
-      then:
-        - read-state: ${{HOST.QUARKUS_POD_ID}}
-          then:
-            - queue-download: ${{QUARKUS_LOGS_FILE}}
-            - sh: ${{CONTAINER_RUNTIME}} logs ${{HOST.QUARKUS_POD_ID}} > ${{QUARKUS_LOGS_FILE}}
+      - read-state: ${{HOST.QUARKUS_POD_ID}}
+        then:
+          - queue-download: ${{QUARKUS_LOGS_FILE}}
+          - sh: ${{CONTAINER_RUNTIME}} logs ${{HOST.QUARKUS_POD_ID}} > ${{QUARKUS_LOGS_FILE}}
+          - sh: ${{CONTAINER_RUNTIME}} rm -f ${{HOST.QUARKUS_POD_ID}}
 
-    # remove all pods
-    - sh: ${{CONTAINER_RUNTIME}} rm -f ${{HOST.QUARKUS_POD_ID}}
-  
 states:
   # container exec
   CONTAINER_RUNTIME: docker
@@ -56,7 +50,6 @@ states:
   IS_NATIVE: false
   JAVA_OPTS_APPEND: "-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 
-  QUARKUS_ENABLED: true
   QUARKUS_IMAGE: "quarkus-reactive-beer/beer:native-latest"
   QUARKUS_NATIVE_ENTRYPOINT: application
   QUARKUS_PORT: 8083
